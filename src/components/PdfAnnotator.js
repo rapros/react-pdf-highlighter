@@ -30,14 +30,14 @@ import { scaledToViewport, viewportToScaled } from "../lib/coordinates";
 
 import type {
   T_Position,
-  T_ScaledPosition,
-  T_Highlight,
-  T_Scaled,
-  T_LTWH,
-  T_PDFJS,
-  T_PDFJS_Viewer,
-  T_PDFJS_Document,
-  T_PDFJS_LinkService
+    T_ScaledPosition,
+    T_Highlight,
+    T_Scaled,
+    T_LTWH,
+    T_PDFJS,
+    T_PDFJS_Viewer,
+    T_PDFJS_Document,
+    T_PDFJS_LinkService
 } from "../types";
 
 // @FIXME: hack
@@ -84,7 +84,7 @@ type Props<T_HT> = {
     content: { text?: string, image?: string },
     hideTipAndSelection: () => void,
     transformSelection: () => void
-  ) => ?React$Element<*>,
+  ) =>?React$Element<*>,
   enableAreaSelection: (event: MouseEvent) => boolean
 };
 
@@ -96,7 +96,7 @@ let clickTimeoutId = 0;
 class PdfAnnotator<T_HT: T_Highlight> extends Component<
   Props<T_HT>,
   State<T_HT>
-> {
+  > {
   state = {
     ghostHighlight: null,
     isCollapsed: true,
@@ -144,6 +144,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
 
     document.addEventListener("selectionchange", this.onSelectionChange);
     document.addEventListener("keydown", this.handleKeyDown);
+    document.addEventListener("mousedown", this.onMouseDown);
 
     this.containerNode &&
       this.containerNode.addEventListener("pagesinit", () => {
@@ -155,21 +156,18 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
         "textlayerrendered",
         this.onTextLayerRendered
       );
-    this.containerNode &&
-      this.containerNode.addEventListener("mousedown", this.onMouseDown);
   }
 
   componentWillUnmount() {
     document.removeEventListener("selectionchange", this.onSelectionChange);
     document.removeEventListener("keydown", this.handleKeyDown);
+    document.removeEventListener("mousedown", this.onMouseDown);
 
     this.containerNode &&
       this.containerNode.removeEventListener(
         "textlayerrendered",
         this.onTextLayerRendered
       );
-    this.containerNode &&
-      this.containerNode.removeEventListener("mousedown", this.onMouseDown);
   }
 
   findOrCreateHighlightLayer(page: number) {
@@ -381,7 +379,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
         ...pageViewport.convertToPdfPoint(
           0,
           scaledToViewport(boundingRect, pageViewport, usePdfCoordinates).top -
-            scrollMargin
+          scrollMargin
         ),
         0
       ]
