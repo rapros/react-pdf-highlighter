@@ -516,11 +516,16 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
     );
   };
 
-  toggleTextSelection(flag: boolean) {
+  toggleTextSelection(toggleState: boolean) {
     this.viewer.viewer.classList.toggle(
       "PdfAnnotator--disable-selection",
-      flag
+      toggleState
     );
+    if (toggleState === true) {
+      const selection: Selection = window.getSelection();
+      selection.empty();
+      this.hideTipAndSelection();
+    }
   }
 
   render() {
@@ -545,7 +550,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
               event.target instanceof HTMLElement &&
               Boolean(event.target.closest(".page"))
             }
-            onSelection={(startTarget, boundingRect, resetSelection) => {
+            onSelection={(startTarget, boundingRect, resetAreaSelection) => {
               const page = getPageFromElement(startTarget);
 
               if (!page) {
@@ -585,7 +590,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
                         }
                       },
                       () => {
-                        resetSelection();
+                        resetAreaSelection();
                         this.renderHighlights();
                       }
                     )
