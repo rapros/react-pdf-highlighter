@@ -76,7 +76,7 @@ type Props<T_HT> = {
     isScrolledTo: boolean
   ) => React$Element<*>,
   highlights: Array<T_HT>,
-  onScrollChange: () => void,
+  onScrollChange?: () => void,
   scrollRef: (scrollTo: (highlight: T_Highlight) => void) => void,
   pdfDocument: T_PDFJS_Document,
   onSelectionFinished: (
@@ -429,7 +429,9 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
   onScroll = () => {
     const { onScrollChange } = this.props;
 
-    onScrollChange();
+    if (onScrollChange) {
+      onScrollChange();
+    }
 
     this.setState(
       {
@@ -521,7 +523,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
       "PdfAnnotator--disable-selection",
       toggleState
     );
-    if (toggleState === true) {
+    if (toggleState === true) { // Clears existing text selections
       const selection: Selection = window.getSelection();
       selection.empty();
       this.hideTipAndSelection();
