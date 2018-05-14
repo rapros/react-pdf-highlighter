@@ -21,7 +21,7 @@ type Props = {
   onSelection: (
     startTarget: HTMLElement,
     boundingRect: T_LTWH,
-    resetSelection: () => void
+    resetAreaSelection: () => void
   ) => void,
   onDragStart: () => void,
   onDragEnd: () => void,
