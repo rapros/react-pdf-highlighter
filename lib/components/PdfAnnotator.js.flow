@@ -485,13 +485,18 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
       return;
     }
 
-    const rects = getClientRects(range, page.node);
+    let rects = getClientRects(range, page.node);
 
     if (rects.length === 0) {
       return;
     }
 
+    // hack: filter out all 'illegal' rects (probably from outside the PDF)
+    rects = rects.filter(r => r.left !== 0);
+
     const boundingRect = getBoundingRect(rects);
+
+    console.log(boundingRect);
 
     const viewportPosition = { boundingRect, rects, pageNumber: page.number };
 
