@@ -1,15 +1,14 @@
 // @flow
-
 import React, { Component } from "react";
 import ReactDom from "react-dom";
-
-import { PDFJS } from "pdfjs-dist";
-require("pdfjs-dist/web/pdf_viewer");
+import Pointable from "react-pointable";
+import _ from "lodash/fp";
+import { PDFViewer, PDFLinkService } from "pdfjs-dist/web/pdf_viewer";
 
 import "pdfjs-dist/web/pdf_viewer.css";
 import "../style/pdf_viewer.css";
 
-import "../style/PdfAnnotator.css";
+import "../style/PdfHighlighter.css";
 
 import getBoundingRect from "../lib/get-bounding-rect";
 import getClientRects from "../lib/get-client-rects";
@@ -20,8 +19,6 @@ import {
   getPageFromElement,
   findOrCreateContainerLayer
 } from "../lib/pdfjs-dom";
-
-import TextLayerBuilder_bindMouse from "../PDFJS/TextLayerBuilder_bindMouse";
 
 import TipContainer from "./TipContainer";
 import MouseSelection from "./MouseSelection";
@@ -34,16 +31,10 @@ import type {
     T_Highlight,
     T_Scaled,
     T_LTWH,
-    T_PDFJS,
     T_PDFJS_Viewer,
     T_PDFJS_Document,
     T_PDFJS_LinkService
 } from "../types";
-
-// @FIXME: hack
-PDFJS.TextLayerBuilder.prototype._bindMouse = TextLayerBuilder_bindMouse;
-
-PDFJS.disableWorker = true;
 
 type T_ViewportHighlight<T_HT> = { position: T_Position } & T_HT;
 
@@ -53,7 +44,6 @@ type State<T_HT> = {
   },
   isCollapsed: boolean,
   range: ?Range,
-  isMouseDown: boolean,
   tip: ?{
     highlight: T_ViewportHighlight<T_HT>,
     callback: (highlight: T_ViewportHighlight<T_HT>) => React$Element<*>
@@ -88,12 +78,16 @@ type Props<T_HT> = {
   enableAreaSelection: (event: MouseEvent) => boolean
 };
 
-const CLICK_TIMEOUT = 300;
 const EMPTY_ID = "empty-id";
 
-let clickTimeoutId = 0;
+const disableEvent = (event: Event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  return false;
+};
+let clickTimeoutId: TimeoutID;
 
-class PdfAnnotator<T_HT: T_Highlight> extends Component<
+class PdfHighlighter<T_HT: T_Highlight> extends Component<
   Props<T_HT>,
   State<T_HT>
   > {
@@ -114,6 +108,8 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
   containerNode = null;
   containerNode: ?HTMLDivElement;
 
+  debouncedAfterSelection: () => void;
+
   componentWillReceiveProps(nextProps: Props<T_HT>) {
     if (this.props.highlights !== nextProps.highlights) {
       this.renderHighlights(nextProps);
@@ -127,9 +123,10 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
   componentDidMount() {
     const { pdfDocument } = this.props;
 
-    this.linkService = new PDFJS.PDFLinkService();
+    this.debouncedAfterSelection = _.debounce(500, this.afterSelection);
+    this.linkService = new PDFLinkService();
 
-    this.viewer = new PDFJS.PDFViewer({
+    this.viewer = new PDFViewer({
       container: this.containerNode,
       enhanceTextSelection: true,
       removePageBorders: true,
@@ -141,6 +138,8 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
 
     // debug
     window.PdfViewer = this;
+
+    window.oncontextmenu = disableEvent;
 
     document.addEventListener("selectionchange", this.onSelectionChange);
     document.addEventListener("keydown", this.handleKeyDown);
@@ -179,7 +178,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
 
     return findOrCreateContainerLayer(
       textLayer.textLayerDiv,
-      "PdfAnnotator__highlight-layer"
+      "PdfHighlighter__highlight-layer"
     );
   }
 
@@ -204,13 +203,12 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
     const {
       isCollapsed,
       ghostHighlight,
-      isMouseDown,
       isAreaSelectionInProgress
     } = this.state;
 
     const highlightInProgress = !isCollapsed || ghostHighlight;
 
-    if (highlightInProgress || isMouseDown || isAreaSelectionInProgress) {
+    if (highlightInProgress || isAreaSelectionInProgress) {
       return;
     }
 
@@ -318,7 +316,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
   hideTipAndSelection = () => {
     const tipNode = findOrCreateContainerLayer(
       this.viewer.viewer,
-      "PdfAnnotator__tip-layer"
+      "PdfHighlighter__tip-layer"
     );
 
     ReactDom.unmountComponentAtNode(tipNode);
@@ -339,7 +337,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
 
     const tipNode = findOrCreateContainerLayer(
       this.viewer.viewer,
-      "PdfAnnotator__tip-layer"
+      "PdfHighlighter__tip-layer"
     );
 
     ReactDom.render(
@@ -424,6 +422,8 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
       isCollapsed: false,
       range
     });
+
+    this.debouncedAfterSelection();
   };
 
   onScroll = () => {
@@ -448,17 +448,11 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
       return;
     }
 
-    if (event.target.closest(".PdfAnnotator__tip-container")) {
+    if (event.target.closest(".PdfHighlighter__tip-container")) {
       return;
     }
 
     this.hideTipAndSelection();
-
-    // let single click go through
-    clickTimeoutId = setTimeout(
-      () => this.setState({ isMouseDown: true }),
-      CLICK_TIMEOUT
-    );
   };
 
   handleKeyDown = (event: KeyboardEvent) => {
@@ -467,10 +461,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
     }
   };
 
-  onMouseUp = () => {
-    clearTimeout(clickTimeoutId);
-    this.setState({ isMouseDown: false });
-
+  afterSelection = () => {
     const { onSelectionFinished } = this.props;
 
     const { isCollapsed, range } = this.state;
@@ -503,7 +494,6 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
     const content = {
       text: range.toString()
     };
-
     const scaledPosition = this.viewportPositionToScaled(viewportPosition);
 
     this.renderTipAtPosition(
@@ -525,7 +515,7 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
 
   toggleTextSelection(toggleState: boolean) {
     this.viewer.viewer.classList.toggle(
-      "PdfAnnotator--disable-selection",
+      "PdfHighlighter--disable-selection",
       toggleState
     );
     if (toggleState === true) { // Clears existing text selections
@@ -539,76 +529,77 @@ class PdfAnnotator<T_HT: T_Highlight> extends Component<
     const { onSelectionFinished, enableAreaSelection } = this.props;
 
     return (
-      <div
-        ref={node => (this.containerNode = node)}
-        onMouseUp={() => setTimeout(this.onMouseUp, 0)}
-        className="PdfAnnotator"
-      >
-        <div className="pdfViewer" />
-        {typeof enableAreaSelection === "function" ? (
-          <MouseSelection
-            onDragStart={() => this.toggleTextSelection(true)}
-            onDragEnd={() => this.toggleTextSelection(false)}
-            onChange={isVisible =>
-              this.setState({ isAreaSelectionInProgress: isVisible })
-            }
-            shouldStart={event =>
-              enableAreaSelection(event) &&
-              event.target instanceof HTMLElement &&
-              Boolean(event.target.closest(".page"))
-            }
-            onSelection={(startTarget, boundingRect, resetAreaSelection) => {
-              const page = getPageFromElement(startTarget);
-
-              if (!page) {
-                return;
+      <Pointable onPointerDown={this.onMouseDown}>
+        <div
+          ref={node => (this.containerNode = node)}
+          className="PdfHighlighter"
+        >
+          <div className="pdfViewer" />
+          {typeof enableAreaSelection === "function" ? (
+            <MouseSelection
+              onDragStart={() => this.toggleTextSelection(true)}
+              onDragEnd={() => this.toggleTextSelection(false)}
+              onChange={isVisible =>
+                this.setState({ isAreaSelectionInProgress: isVisible })
               }
+              shouldStart={event =>
+                enableAreaSelection(event) &&
+                event.target instanceof HTMLElement &&
+                Boolean(event.target.closest(".page"))
+              }
+              onSelection={(startTarget, boundingRect, resetSelection) => {
+                const page = getPageFromElement(startTarget);
 
-              const pageBoundingRect = {
-                ...boundingRect,
-                top: boundingRect.top - page.node.offsetTop,
-                left: boundingRect.left - page.node.offsetLeft
-              };
+                if (!page) {
+                  return;
+                }
 
-              const viewportPosition = {
-                boundingRect: pageBoundingRect,
-                rects: [],
-                pageNumber: page.number
-              };
+                const pageBoundingRect = {
+                  ...boundingRect,
+                  top: boundingRect.top - page.node.offsetTop,
+                  left: boundingRect.left - page.node.offsetLeft
+                };
 
-              const scaledPosition = this.viewportPositionToScaled(
-                viewportPosition
-              );
+                const viewportPosition = {
+                  boundingRect: pageBoundingRect,
+                  rects: [],
+                  pageNumber: page.number
+                };
 
-              const image = this.screenshot(pageBoundingRect, page.number);
+                const scaledPosition = this.viewportPositionToScaled(
+                  viewportPosition
+                );
 
-              this.renderTipAtPosition(
-                viewportPosition,
-                onSelectionFinished(
-                  scaledPosition,
-                  { image },
-                  () => this.hideTipAndSelection(),
-                  () =>
-                    this.setState(
-                      {
-                        ghostHighlight: {
-                          position: scaledPosition,
-                          content: { image }
+                const image = this.screenshot(pageBoundingRect, page.number);
+
+                this.renderTipAtPosition(
+                  viewportPosition,
+                  onSelectionFinished(
+                    scaledPosition,
+                    { image },
+                    () => this.hideTipAndSelection(),
+                    () =>
+                      this.setState(
+                        {
+                          ghostHighlight: {
+                            position: scaledPosition,
+                            content: { image }
+                          }
+                        },
+                        () => {
+                          resetSelection();
+                          this.renderHighlights();
                         }
-                      },
-                      () => {
-                        resetAreaSelection();
-                        this.renderHighlights();
-                      }
-                    )
-                )
-              );
-            }}
-          />
-        ) : null}
-      </div>
+                      )
+                  )
+                );
+              }}
+            />
+          ) : null}
+        </div>
+      </Pointable>
     );
   }
 }
 
-export default PdfAnnotator;
+export default PdfHighlighter;
